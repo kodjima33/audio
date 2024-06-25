@@ -1,0 +1,123 @@
+name:  Create flutter build
+
+on:
+  # Runs this action when you push on master and development
+  push:
+    branches:
+      - "main"
+      - "development"
+  pull_request:
+    branches:
+      - "development"
+
+
+jobs:
+  flutter_job:
+
+    # The machine, we can also use windows-latest or ubuntu-latest
+    # We are choosing macos-latest because we will be also building for iOS
+    runs-on: macos-latest
+
+    env:
+      KEYSTORE_PATH: apps/AppWithWearable/android/app/upload-keystore.jks
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          architecture: x64
+
+      #Steps for Fastlane
+      #1
+      #Setup ruby version
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3.3'
+
+
+
+      #2
+      - name: Install Bundler
+        run: gem install bundler
+
+      - name: Cache Ruby gems
+        uses: actions/cache@v2
+        with:
+            path: vendor/bundle
+            key: ${{ runner.os }}-gems-${{ hashFiles('**/Gemfile.lock') }}
+            restore-keys: |
+              ${{ runner.os }}-gems-  
+
+      #3
+      - name: Install Fastlane
+        run: bundle install
+
+      # Cache pub packages
+      - name: Cache pub packages
+        uses: actions/cache@v2
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.yaml') }}
+          restore-keys: ${{ runner.os }}-pub-
+
+      # Setup the env
+      - name: Setup Env
+        run: cat .env.template > .env
+        working-directory: apps/AppWithWearable
+
+      # Build runner
+      - name: Run Build Runner
+        run: dart run build_runner build --delete-conflicting-outputs
+        working-directory: apps/AppWithWearable
+
+      # Decoding jks file
+      - name: Decode and write keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.SECRET_JKS }}
+        run: echo $KEYSTORE_BASE64 | base64 --decode > $KEYSTORE_PATH
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: apps/AppWithWearable
+
+      - name: Run Fastlane for Android
+        run: bundle exec fastlane build_debug
+        working-directory: apps/AppWithWearable/android
+
+      - name: Run Fastlane for iOS
+        run: bundle exec fastlane build_debug
+        working-directory: apps/AppWithWearable/ios
+        env:
+          LC_ALL: en_US.UTF-8
+          LANG: en_US.UTF-8
+
+      - name : Create Android Build
+        working-directory: apps/AppWithWearable
+        run: flutter build apk --release --split-per-abi
+
+      - name : Create iOS Build
+        working-directory: apps/AppWithWearable
+        run: |
+          flutter build ios --no-codesign
+          cd build/ios/iphoneos
+          mkdir Payload
+          cd Payload
+          ln -s ../Runner.app
+          cd ..
+          zip -r app.ipa Payload
+
+      #Creating bundles of output
+      - name: Push to Releases
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "apps/AppWithWearable/build/app/outputs/apk/release/*,apps/AppWithWearable/build/ios/iphoneos/app.ipa"
+          tag: v1.0.${{ github.run_number }}
+          token: ${{ secrets.TOKEN }}
+
