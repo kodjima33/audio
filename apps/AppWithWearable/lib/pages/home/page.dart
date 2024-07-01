@@ -21,6 +21,7 @@ import 'package:friend_private/pages/memories/page.dart';
 import 'package:friend_private/pages/settings/page.dart';
 import 'package:friend_private/utils/ble/communication.dart';
 import 'package:friend_private/utils/ble/connected.dart';
+import 'package:friend_private/utils/ble/dfu.dart';
 import 'package:friend_private/utils/ble/scan.dart';
 import 'package:friend_private/utils/foreground.dart';
 import 'package:friend_private/utils/notifications.dart';
@@ -383,6 +384,21 @@ class _HomePageWrapperState extends State<HomePageWrapper> with WidgetsBindingOb
                     )
                   : const SizedBox.shrink(),
               // Text(['Memories', 'Device', 'Chat'][_selectedIndex]),
+              IconButton(
+                // TODO: Show the button only if a device is connected
+                // and there's a new firmware available
+                icon: const Icon(
+                  Icons.download,
+                  color: Colors.white,
+                  size: 30,
+                ),
+                onPressed: () async {
+                  if (_device != null) {
+                    MixpanelManager().firmwareUpdateButtonClick();
+                    await startDfu(_device!, '');
+                  }
+                },
+              ),
               IconButton(
                 icon: const Icon(
                   Icons.settings,
